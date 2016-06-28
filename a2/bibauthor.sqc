@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "util.h"
+#include <string.h>
 
 EXEC SQL INCLUDE SQLCA; 
 
@@ -8,20 +9,37 @@ int main(int argc, char *argv[]) {
 
    EXEC SQL BEGIN DECLARE SECTION;
       char db[6] = "cs348";
+      //char aname[23];
+      char wpubid[11];
+      int aaid;
+      int aorder;
    EXEC SQL END DECLARE SECTION;
+
+   //aname = "Ivan T. Bowman";
+   //strcpy(aname, "Ivan T. Bowman");
+   aaid = 3;
 
    printf("Sample C program: CONNECT\n" );
 
-   EXEC SQL WHENEVER SQLERROR  GO TO error;
+   //EXEC SQL WHENEVER SQLERROR  GO TO error;
 
    EXEC SQL CONNECT TO :db;
 
+   EXEC SQL DECLARE C1 CURSOR FOR SELECT pubid, aorder FROM wrote WHERE aid = :aaid;
+   EXEC SQL OPEN C1;
+
    printf("Connected to DB2: a test SELECT for %s\n", db);
 
-   EXEC SELECT * FROM author;
-
+   for ( ; ; ) {
+	EXEC SQL FETCH C1 INTO :wpubid, :aorder;
+	if (SQLCODE == 100) {break;}
+	printf("PUBID: %s\tORDER: %d\n", wpubid, aorder);
+   } 
+   
+   EXEC SQL CLOSE C1;
    EXEC SQL COMMIT;
    EXEC SQL CONNECT reset;
+
    exit(0);
 
 error:
