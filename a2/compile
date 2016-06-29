@@ -26,3 +26,33 @@
  "$CC" "$CFLAGS" -c "$NAME".c
  "$CC" "$CFLAGS" -c "$UTILFILE".c
  "$CC" "$CFLAGS" -o "$NAME" "$NAME".o "$UTILFILE".o $LIBS
+
+ NAME=bibcontent
+ 
+ set -x
+
+ rm -f "$NAME" "$NAME".c "$NAME".o "$NAME".bnd
+ rm -f "$UTILFILE" "$UTILFILE".o "$UTILFILE".bnd
+
+ db2 connect to "$DATABASE"
+ db2 prep "$NAME".sqc bindfile
+ db2 bind "$NAME".bnd
+ db2 connect reset
+ "$CC" "$CFLAGS" -c "$NAME".c
+ "$CC" "$CFLAGS" -c "$UTILFILE".c
+ "$CC" "$CFLAGS" -o "$NAME" "$NAME".o "$UTILFILE".o $LIBS
+
+ NAME=bibmaint
+ 
+ set -x
+
+ rm -f "$NAME" "$NAME".c "$NAME".o "$NAME".bnd
+ rm -f "$UTILFILE" "$UTILFILE".o "$UTILFILE".bnd
+
+ db2 connect to "$DATABASE"
+ db2 prep "$NAME".sqc bindfile
+ db2 bind "$NAME".bnd
+ db2 connect reset
+ "$CC" "$CFLAGS" -c "$NAME".c
+ "$CC" "$CFLAGS" -c "$UTILFILE".c
+ "$CC" "$CFLAGS" -o "$NAME" "$NAME".o "$UTILFILE".o $LIBS

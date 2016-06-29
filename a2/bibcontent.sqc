@@ -1,0 +1,85 @@
+#include <stdio.h>
+#include "util.h"
+#include <string.h>
+
+EXEC SQL INCLUDE SQLCA; 
+
+//argc should be 2.
+//input example: ./bibcontent "JRN001"
+int main(int argc, char *argv[]) {
+   char * getpass();
+
+   EXEC SQL BEGIN DECLARE SECTION;
+      char db[6] = "cs348";
+      char wpubid[11], input[11], appearsin[11];
+      char aname[23];
+      char title[71];
+      int aaid;
+      int aorder;
+      int strpg, endpg;
+   EXEC SQL END DECLARE SECTION;
+
+   strcpy(input, argv[1]);
+
+   printf("Sample C program: CONNECT\n" );
+
+   EXEC SQL WHENEVER SQLERROR  GO TO error;
+
+   EXEC SQL CONNECT TO :db;
+
+   EXEC SQL DECLARE C1 CURSOR FOR SELECT * FROM article  WHERE appearsin = :input ORDER BY startpage;
+   EXEC SQL OPEN C1;
+
+   printf("Connected to DB2: a test SELECT for %s\n", db);
+
+   for ( ; ; ) {
+	EXEC SQL FETCH C1 INTO :wpubid, :appearsin, :strpg, :endpg;
+	if (SQLCODE == 100) {break;}
+	//printf("\tPUBID: %s\tNAME: %s\tYEAR: %d\tTYPE: %d\n", wpubid, aname, year, type);
+	
+	printf("Pubid:\t\t%s\n", wpubid);
+	printf("Type:\t\tarticle\n");
+	
+	//PRINT TITLE
+	EXEC SQL SELECT title INTO :title FROM publication WHERE pubid = :wpubid;
+	printf("Title:\t\t%s\n", title);
+	
+	printf("Authors:\t");
+	//DOES QUERY TO OBTAIN ALL AUTHORS
+	EXEC SQL DECLARE C2 CURSOR FOR
+		SELECT name FROM author a INNER JOIN wrote w ON (a.aid = w.aid) WHERE pubid = :wpubid ORDER BY aorder;
+	EXEC SQL OPEN C2;
+	for ( ; ; ) {
+		EXEC SQL FETCH C2 INTO :aname;
+		if (SQLCODE == 100) {break;}
+		printf("%s, ", aname);
+	}
+	printf("\n");
+	EXEC SQL CLOSE C2;
+	
+	printf("In:\t\t%s\n", appearsin);
+	printf("Pages:\t\t%d--%d\n\n", strpg, endpg);
+	
+	
+   } 
+   
+   EXEC SQL CLOSE C1;
+   EXEC SQL COMMIT;
+   EXEC SQL CONNECT reset;
+
+   exit(0);
+
+error:
+   check_error("My error",&sqlca);
+   EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+   EXEC SQL ROLLBACK;
+   EXEC SQL CONNECT reset;
+   exit(1);
+}
+
+/*
+
+SELECT * FROM article WHERE appearsin = input
+
+*/
