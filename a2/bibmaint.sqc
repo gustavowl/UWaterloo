@@ -144,6 +144,8 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 	int year, volume, number, strpg, endpg;
    EXEC SQL END DECLARE SECTION;
 
+//printf("****INS_OR_UPD: %d\n", ins_or_upd);
+
 	switch (cmd) {
 		case(AUTHOR): {
 			aid = atoi(args[0]);
@@ -171,6 +173,7 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 			year = atoi(args[4]);
 
 			if (ins_or_upd == INS) { //INSERT
+				//printf("INSERT BOOK\n");
 				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
 				for (aorder = 1; aorder <= sz_arg_aid; aorder++) {
 					aid = atoi(args_aid[aorder - 1]);
@@ -264,26 +267,30 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 }
 
 int main (int argc, char *argv[]) {
-	int i;
-	for (i = 1; i < argc; i++) {
+	int i, j;
+/*	for (i = 1; i < argc; i++) {
 		printf("argv[%d]: %s\tsize: %d\n", i, argv[i], (int)strlen(argv[i]));
 	}
+*/
 
 	char *s, *s2, *tk;
 	char *svptr, *svptr2;
 	int first, size = 0, size_aid = 0;
-    EXEC SQL BEGIN DECLARE SECTION;
+	EXEC SQL BEGIN DECLARE SECTION;
 		char db[6] = "cs348";
 		char **args = NULL, **args_aid = NULL;
 		char pubid[11];
-		int ins_or_upd = INS, aid;
+		int ins_or_upd, aid;
 	EXEC SQL END DECLARE SECTION;
 	command cmd;
 
-   EXEC SQL WHENEVER SQLERROR  GO TO error;
-   EXEC SQL CONNECT TO :db;
+	EXEC SQL WHENEVER SQLERROR  GO TO error;
+	EXEC SQL CONNECT TO :db;
 
-	s = strtok_r(argv[1], TK2, &svptr);
+   for (j = 1; j <= argc; j++) {
+	ins_or_upd = INS;
+
+	s = strtok_r(argv[j], TK2, &svptr);
 
 	while (s != NULL) {		
 		first = 1;
@@ -291,7 +298,7 @@ int main (int argc, char *argv[]) {
 		tk = strtok_r(s2, TK1, &svptr2);
 		while (tk != NULL) {
 			if (first) {
-				printf("cmd: %s\n", tk);
+				//printf("cmd: %s\n", tk);
 				if ( !strcmp(tk, "author") ) cmd = AUTHOR;
 				else if ( !strcmp(tk, "authorurl") ) cmd = AUTHORURL;
 				else if ( !strcmp(tk, "book") ) cmd = BOOK;
@@ -301,17 +308,17 @@ int main (int argc, char *argv[]) {
 				else cmd = INVALID;
 			}
 			else {
-				printf("\targs: %s\n", tk);
+				//printf("\targs: %s\n", tk);
 				//split
 				args = getargs(&tk, '#', &size);
-				for (i = 0; i < size; i++) {
+				/*for (i = 0; i < size; i++) {
 					printf("\t%d: %s\n", i, args[i]);
-				}
+				}*/
 				if (cmd == BOOK || cmd == ARTICLE) {
 					args_aid = getargs(&args[2], ';', &size_aid);
-					for (i = 0; i < size_aid; i++) {
+					/*for (i = 0; i < size_aid; i++) {
 						printf("\t\t%d: %s\n", i, args_aid[i]);
-					}
+					}*/
 				}
 
 				//DISCOVER IF INSERT OR UPDATE
@@ -350,10 +357,10 @@ int main (int argc, char *argv[]) {
 		s = strtok_r(NULL, TK2, &svptr);
 	}
 	//return 0;
+   }
 
-   EXEC SQL CONNECT reset;
-
-   exit(0);
+	EXEC SQL CONNECT reset;
+	exit(0);
 
 error:
    check_error("My error",&sqlca);
