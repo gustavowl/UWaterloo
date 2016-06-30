@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <string.h>
+#include "util.h"
 #include <stdlib.h>
 
 #define TK1 "(" //BEGIN OF COMMAND
 #define TK2 ")" //END OF COMMAND
 #define UPD 1
 #define INS 0
+
+EXEC SQL INCLUDE SQLCA;
 
 typedef enum command  {
 	AUTHOR = 0,
@@ -51,7 +54,8 @@ char** getargs(char **str, char split, int *size) {
 }
 
 void freeargs(char **args, int size) {
-	for (int i = 0; i < size; i++) {
+	int i;
+	for (i = 0; i < size; i++) {
 		free(args[i]);
 		args[i] = NULL;
 	}
@@ -65,19 +69,146 @@ void printmodifications(command cmd, char* id) {
 
 void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_aid, int ins_or_upd) {
 	//switches, ifs
+	//int aid;
 	printf("\tAI DENTRO DE modifydb\n%s\n", args[0]);
+
+
+
+   EXEC SQL BEGIN DECLARE SECTION;
+	int  temp=2112;
+
+	char pubid[11], appearsin[11];
+	char name[23];
+	char title[71], publisher[51];
+	int aid, aorder;
+	int year, volume, number, strpg, endpg;
+   EXEC SQL END DECLARE SECTION;
+
+
+
+
+	switch (cmd) {
+		case(AUTHOR): {
+			aid = atoi(args[0]);
+			strcpy(name, args[1]);
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO author VALUES (:aid, :name, NULL);
+				printf("INSERT AUTHOR #%d: %s \n", aid, name);
+			}
+			else { //UPDATE
+				//printf("UPDATE AUTHOR #%d: %d\n", aid, temp);
+				EXEC SQL SELECT 73 INTO :temp FROM author WHERE aid = :aid;
+				printf("UPDATE AUTHOR #%d: %d\n", aid, temp);
+			}
+			break;
+		}
+		case (AUTHORURL): {
+			//UPDATE ONLY
+			printf("UPDATE AUTHORURL\n");
+			break;
+		}
+		case (BOOK): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			strcpy(publisher, args[3]);
+			year = atoi(args[4]);
+
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				for (aorder = 1; aorder <= sz_arg_aid; aorder++) {
+					aid = atoi(args_aid[aorder - 1]);
+					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+				}
+				EXEC SQL INSERT INTO book VALUES (:pubid, :publisher, :year);
+
+				printf("INSERT BOOK \n");
+			}
+			else { //UPDATE
+				printf("UPDATE BOOK\n");
+			}
+			break;
+		}
+		case (JOURNAL): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			volume = atoi(args[2]);
+			number = atoi(args[3]);
+			year = atoi(args[4]);
+			
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				EXEC SQL INSERT INTO journal VALUES (:pubid, :volume,
+					:number, :year);
+					 
+				printf("INSERT JOURNAL \n");
+			}
+			else { //UPDATE
+				printf("UPDATE JOURNAL\n");
+			}
+			break;
+		}
+		case (PROCEEDINGS): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			year = atoi(args[2]);
+
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				EXEC SQL INSERT INTO proceedings VALUES (:pubid, :year);
+				printf("INSERT PROCEEDINGS\n");
+			}
+			else { //UPDATE
+				printf("UPDATE PROCEEDINGS\n");
+			}
+			break;
+		}
+		case (ARTICLE): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			strcpy(appearsin, args[3]);
+			strpg = atoi(args[4]);
+			endpg = atoi(args[5]);
+
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				for (aorder = 1; aorder <= sz_arg_aid; aorder++) {
+					aid = atoi(args_aid[aorder - 1]);
+					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+				}
+				EXEC SQL INSERT INTO article VALUES (:pubid, :appearsin, :strpg, :endpg);
+				printf("INSERT ARTICLE \n");
+			}
+			else { //UPDATE
+				printf("UPDATE ARTICLE\n");
+			}
+			break;
+		}
+		case(INVALID): {
+			break;
+		}
+	}
 }
 
 int main (int argc, char *argv[]) {
 	printf("argc: %d\n\n", argc);
-	for (int i = 1; i < argc; i++) {
-		printf("argv[%d]: %s\tsize: %d\n", i, argv[i], strlen(argv[i]));
+	int i;
+	for (i = 1; i < argc; i++) {
+		printf("argv[%d]: %s\tsize: %d\n", i, argv[i], (int)strlen(argv[i]));
 	}
 
-	char *s, *s2, *tk, **args = NULL, **args_aid = NULL;
+	char *s, *s2, *tk;
 	char *svptr, *svptr2;
-	int first, size = 0, size_aid = 0, ins_or_upd = INS;
+	int first, size = 0, size_aid = 0;
+    EXEC SQL BEGIN DECLARE SECTION;
+		char db[6] = "cs348";
+		char **args = NULL, **args_aid = NULL;
+		char pubid[11];
+		int ins_or_upd = INS, aid;
+	EXEC SQL END DECLARE SECTION;
 	command cmd;
+
+   EXEC SQL WHENEVER SQLERROR  GO TO error;
+   EXEC SQL CONNECT TO :db;
 
 	s = strtok_r(argv[1], TK2, &svptr);
 	printf("\n\nTrying to split\n");
@@ -101,12 +232,12 @@ int main (int argc, char *argv[]) {
 				printf("\targs: %s\n", tk);
 				//split
 				args = getargs(&tk, '#', &size);
-				for (int i = 0; i < size; i++) {
+				for (i = 0; i < size; i++) {
 					printf("\t%d: %s\n", i, args[i]);
 				}
 				if (cmd == BOOK || cmd == ARTICLE) {
 					args_aid = getargs(&args[2], ';', &size_aid);
-					for (int i = 0; i < size_aid; i++) {
+					for (i = 0; i < size_aid; i++) {
 						printf("\t\t%d: %s\n", i, args_aid[i]);
 					}
 				}
@@ -114,17 +245,26 @@ int main (int argc, char *argv[]) {
 				//DISCOVER IF INSERT OR UPDATE
 				if (cmd == INVALID) {}
 				else if (cmd == AUTHOR) {
-					//EXEC SQL SELECT 1 INTO :ins_or_upd FROM author WHERE aid = :args[0];
+					aid = atoi(args[0]);
+					printf("AID: %d\n", aid);
+					EXEC SQL SELECT 1 INTO :ins_or_upd FROM author WHERE aid = :aid;
+					//case UPD value is different of 1
+					if (ins_or_upd == 1) ins_or_upd = UPD;
 				}
 				else if (cmd == AUTHORURL) {
 					ins_or_upd = UPD; //then update only
 				}
 				else {
-					//EXEC SQL SELECT 1 INTO :ins_or_upd FROM publication WHERE pubid = :args[0];
+					//pubid = args[0];
+					strcpy(pubid, args[0]);
+					EXEC SQL SELECT 1 INTO :ins_or_upd FROM publication WHERE pubid = :pubid;
+					//case UPD value is different of 1
+					if (ins_or_upd == 1) ins_or_upd = UPD;
 				}
 
 				modifydb(cmd, args, size, args_aid, size_aid, ins_or_upd);
-				printmodifications(cmd, args[0]);
+
+				printf("INS_OR_UPD: %d\n", ins_or_upd);
 
 				//Free arrays
 				if (cmd == BOOK || cmd == ARTICLE)
@@ -136,5 +276,19 @@ int main (int argc, char *argv[]) {
 		}
 		s = strtok_r(NULL, TK2, &svptr);
 	}
-	return 0;
+	//return 0;
+
+   EXEC SQL COMMIT;
+	printmodifications(cmd, args[0]);
+   EXEC SQL CONNECT reset;
+
+   exit(0);
+
+error:
+   check_error("My error",&sqlca);
+   EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+   EXEC SQL ROLLBACK;
+   EXEC SQL CONNECT reset;
+   exit(1);
 }

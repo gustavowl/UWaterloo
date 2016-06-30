@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
 	UNION
 	SELECT pbs.*, year, 4 AS TYPE FROM pbs INNER JOIN article ON (pbs.pubid = article.pubid)
 	INNER JOIN journal ON article.appearsin = journal.pubid
-	ORDER BY year, name;
+	ORDER BY year DESC, name ASC;
    EXEC SQL OPEN C1;
 
    printf("Connected to DB2: a test SELECT for %s\n", db);

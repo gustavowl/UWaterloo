@@ -22,7 +22,7 @@
  db2 prep "$NAME".sqc bindfile
  db2 bind "$NAME".bnd
  #db2 "CREATE VIEW pbs AS select * FROM author" #creates view necessary for bibauthor program
- db2 connect reset
+ #db2 connect reset
  "$CC" "$CFLAGS" -c "$NAME".c
  "$CC" "$CFLAGS" -c "$UTILFILE".c
  "$CC" "$CFLAGS" -o "$NAME" "$NAME".o "$UTILFILE".o $LIBS
@@ -34,10 +34,10 @@
  rm -f "$NAME" "$NAME".c "$NAME".o "$NAME".bnd
  rm -f "$UTILFILE" "$UTILFILE".o "$UTILFILE".bnd
 
- db2 connect to "$DATABASE"
+ #db2 connect to "$DATABASE"
  db2 prep "$NAME".sqc bindfile
  db2 bind "$NAME".bnd
- db2 connect reset
+ #db2 connect reset
  "$CC" "$CFLAGS" -c "$NAME".c
  "$CC" "$CFLAGS" -c "$UTILFILE".c
  "$CC" "$CFLAGS" -o "$NAME" "$NAME".o "$UTILFILE".o $LIBS
@@ -49,7 +49,7 @@
  rm -f "$NAME" "$NAME".c "$NAME".o "$NAME".bnd
  rm -f "$UTILFILE" "$UTILFILE".o "$UTILFILE".bnd
 
- db2 connect to "$DATABASE"
+ #db2 connect to "$DATABASE"
  db2 prep "$NAME".sqc bindfile
  db2 bind "$NAME".bnd
  db2 connect reset
