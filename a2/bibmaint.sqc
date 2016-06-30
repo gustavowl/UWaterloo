@@ -138,7 +138,7 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 	int  temp=2112;
 
 	char pubid[11], appearsin[11];
-	char name[23];
+	char name[23], url[43];
 	char title[71], publisher[51];
 	int aid, aorder;
 	int year, volume, number, strpg, endpg;
@@ -152,12 +152,16 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 				EXEC SQL INSERT INTO author VALUES (:aid, :name, NULL);
 			}
 			else { //UPDATE
-				EXEC SQL SELECT 73 INTO :temp FROM author WHERE aid = :aid;
+				EXEC SQL UPDATE author SET name = :name WHERE aid =: aid;
 			}
 			break;
 		}
 		case (AUTHORURL): {
 			//UPDATE ONLY
+			aid = atoi(args[0]);
+			strcpy(url, args[1]);
+
+			EXEC SQL UPDATE author SET url = :url WHERE aid = :aid;
 			break;
 		}
 		case (BOOK): {
@@ -175,7 +179,16 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 				EXEC SQL INSERT INTO book VALUES (:pubid, :publisher, :year);
 			}
 			else { //UPDATE
-				printf("UPDATE BOOK\n");
+				//printf("UPDATE BOOK\n");
+      				EXEC SQL DELETE FROM wrote WHERE pubid = :pubid;
+      				int i;
+      				for (i = 0; i < sz_arg_aid; i++) {
+        	    			aid = atoi(args_aid[i]);
+	            			aorder = i+1;
+            				EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+   				}
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE book SET publisher = :publisher, year = :year WHERE pubid = :pubid;
 			}
 			break;
 		}
@@ -192,7 +205,9 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 					:number, :year);
 			}
 			else { //UPDATE
-				printf("UPDATE JOURNAL\n");
+				EXEC SQL UPDATE publication SET title=:title WHERE pubid=:pubid;
+				EXEC SQL UPDATE journal SET volume=:volume, number=:number, year = :year WHERE pubid = :pubid;
+				//printf("UPDATE JOURNAL\n");
 			}
 			break;
 		}
@@ -206,7 +221,9 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 				EXEC SQL INSERT INTO proceedings VALUES (:pubid, :year);
 			}
 			else { //UPDATE
-				printf("UPDATE PROCEEDINGS\n");
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE proceedings SET year = :year WHERE pubid = :pubid;
+				//printf("UPDATE PROCEEDINGS\n");
 			}
 			break;
 		}
@@ -226,7 +243,17 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 				EXEC SQL INSERT INTO article VALUES (:pubid, :appearsin, :strpg, :endpg);
 			}
 			else { //UPDATE
-				printf("UPDATE ARTICLE\n");
+				//printf("UPDATE ARTICLE\n");
+     				EXEC SQL DELETE FROM wrote WHERE pubid = :pubid;
+      				int i;
+      				for (i = 0; i < sz_arg_aid; i++) {
+        	    			aid = atoi(args_aid[i]);
+	            			aorder = i+1;
+            				EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+   				}
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE article SET appearsin = :appearsin, startpage = :strpg,
+					endpage =: endpg WHERE pubid = :pubid;
 			}
 			break;
 		}
@@ -237,7 +264,6 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 }
 
 int main (int argc, char *argv[]) {
-	printf("argc: %d\n\n", argc);
 	int i;
 	for (i = 1; i < argc; i++) {
 		printf("argv[%d]: %s\tsize: %d\n", i, argv[i], (int)strlen(argv[i]));
