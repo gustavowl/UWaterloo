@@ -63,17 +63,77 @@ void freeargs(char **args, int size) {
 	args = NULL;
 }
 
-void printmodifications(command cmd, char* id) {
-	printf("\tDENTRO DE printmodifications\n");
+void printmodifications(command cmd, char *id) {
+	EXEC SQL BEGIN DECLARE SECTION;
+      char wpubid[11], appearsin[11];
+      char aname[23];
+      char title[71], publisher[51];
+      int aaid;
+      int aorder;
+      int year, volume, number, strpg, endpg;
+   	EXEC SQL END DECLARE SECTION;
+
+	printf("\tOperation was a success. Data modified:\n");
+	strcpy(wpubid, id);
+	printf("Pubid:\t\t%s\n", wpubid);
+	printf("Type:\t\t");
+	switch (cmd) {
+		case 2: //BOOK
+			printf("book\n"); break;
+		case 3: //JOURNAL
+			printf("journal\n"); break;
+		case 4: //PROCEEDINGS
+			printf("proceedings\n"); break;
+		case 5: //ARTICLE
+			printf("article\n"); break;
+	}
+	//PRINT TITLE
+	EXEC SQL SELECT title INTO :title FROM publication WHERE pubid = :wpubid;
+	printf("Title:\t\t%s\n", title);
+	
+	//EXTRA INFO
+	switch (cmd) {
+		case 3: //JOURNAL
+			EXEC SQL SELECT volume, number, year INTO :volume, :number, :year FROM journal WHERE pubid = :wpubid;
+			printf("Volume:\t\t%d\n", volume);
+			printf("Number:\t\t%d\n", number);
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		case 4: //PROCEEDINGS
+			EXEC SQL SELECT year INTO :year FROM proceedings WHERE pubid = :wpubid;
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		default: //BOOK or ARTICLE
+			printf("Authors:\t");
+			//DOES QUERY TO OBTAIN ALL AUTHORS
+			EXEC SQL DECLARE C1 CURSOR FOR
+				SELECT name FROM author a INNER JOIN wrote w ON (a.aid = w.aid) WHERE pubid = :wpubid ORDER BY aorder;
+			EXEC SQL OPEN C1;
+			for ( ; ; ) {
+				EXEC SQL FETCH C1 INTO :aname;
+				if (SQLCODE == 100) {break;}
+				printf("%s, ", aname);
+			}
+			printf("\n");
+			EXEC SQL CLOSE C1;
+
+			if (cmd == BOOK) { //BOOK
+				EXEC SQL SELECT publisher, year INTO :publisher, :year FROM book WHERE pubid = :wpubid;
+				printf("Publisher:\t%s\n", publisher);
+				printf("Year:\t\t%d\n\n", year);
+			}
+			else { //cmd == ARTICLE
+				EXEC SQL SELECT appearsin, startpage, endpage INTO :appearsin, :strpg, :endpg FROM
+					article WHERE pubid = :wpubid;
+				printf("In:\t\t%s\n", appearsin);
+				printf("Pages:\t\t%d--%d\n\n", strpg, endpg);
+			}
+		break;
+	}
+
 }
 
 void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_aid, int ins_or_upd) {
-	//switches, ifs
-	//int aid;
-	printf("\tAI DENTRO DE modifydb\n%s\n", args[0]);
-
-
-
    EXEC SQL BEGIN DECLARE SECTION;
 	int  temp=2112;
 
@@ -84,27 +144,20 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 	int year, volume, number, strpg, endpg;
    EXEC SQL END DECLARE SECTION;
 
-
-
-
 	switch (cmd) {
 		case(AUTHOR): {
 			aid = atoi(args[0]);
 			strcpy(name, args[1]);
 			if (ins_or_upd == INS) { //INSERT
 				EXEC SQL INSERT INTO author VALUES (:aid, :name, NULL);
-				printf("INSERT AUTHOR #%d: %s \n", aid, name);
 			}
 			else { //UPDATE
-				//printf("UPDATE AUTHOR #%d: %d\n", aid, temp);
 				EXEC SQL SELECT 73 INTO :temp FROM author WHERE aid = :aid;
-				printf("UPDATE AUTHOR #%d: %d\n", aid, temp);
 			}
 			break;
 		}
 		case (AUTHORURL): {
 			//UPDATE ONLY
-			printf("UPDATE AUTHORURL\n");
 			break;
 		}
 		case (BOOK): {
@@ -120,8 +173,6 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
 				}
 				EXEC SQL INSERT INTO book VALUES (:pubid, :publisher, :year);
-
-				printf("INSERT BOOK \n");
 			}
 			else { //UPDATE
 				printf("UPDATE BOOK\n");
@@ -139,8 +190,6 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
 				EXEC SQL INSERT INTO journal VALUES (:pubid, :volume,
 					:number, :year);
-					 
-				printf("INSERT JOURNAL \n");
 			}
 			else { //UPDATE
 				printf("UPDATE JOURNAL\n");
@@ -155,7 +204,6 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 			if (ins_or_upd == INS) { //INSERT
 				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
 				EXEC SQL INSERT INTO proceedings VALUES (:pubid, :year);
-				printf("INSERT PROCEEDINGS\n");
 			}
 			else { //UPDATE
 				printf("UPDATE PROCEEDINGS\n");
@@ -176,7 +224,6 @@ void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_
 					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
 				}
 				EXEC SQL INSERT INTO article VALUES (:pubid, :appearsin, :strpg, :endpg);
-				printf("INSERT ARTICLE \n");
 			}
 			else { //UPDATE
 				printf("UPDATE ARTICLE\n");
@@ -211,7 +258,6 @@ int main (int argc, char *argv[]) {
    EXEC SQL CONNECT TO :db;
 
 	s = strtok_r(argv[1], TK2, &svptr);
-	printf("\n\nTrying to split\n");
 
 	while (s != NULL) {		
 		first = 1;
@@ -246,7 +292,6 @@ int main (int argc, char *argv[]) {
 				if (cmd == INVALID) {}
 				else if (cmd == AUTHOR) {
 					aid = atoi(args[0]);
-					printf("AID: %d\n", aid);
 					EXEC SQL SELECT 1 INTO :ins_or_upd FROM author WHERE aid = :aid;
 					//case UPD value is different of 1
 					if (ins_or_upd == 1) ins_or_upd = UPD;
@@ -264,7 +309,9 @@ int main (int argc, char *argv[]) {
 
 				modifydb(cmd, args, size, args_aid, size_aid, ins_or_upd);
 
-				printf("INS_OR_UPD: %d\n", ins_or_upd);
+				EXEC SQL COMMIT;
+				if (cmd != AUTHOR && cmd != AUTHORURL)
+					printmodifications(cmd, args[0]);
 
 				//Free arrays
 				if (cmd == BOOK || cmd == ARTICLE)
@@ -278,8 +325,6 @@ int main (int argc, char *argv[]) {
 	}
 	//return 0;
 
-   EXEC SQL COMMIT;
-	printmodifications(cmd, args[0]);
    EXEC SQL CONNECT reset;
 
    exit(0);
