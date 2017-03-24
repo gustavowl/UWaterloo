@@ -1,0 +1,372 @@
+#include <stdio.h>
+#include <string.h>
+#include "util.h"
+#include <stdlib.h>
+
+#define TK1 "(" //BEGIN OF COMMAND
+#define TK2 ")" //END OF COMMAND
+#define UPD 1
+#define INS 0
+
+EXEC SQL INCLUDE SQLCA;
+
+typedef enum command  {
+	AUTHOR = 0,
+	AUTHORURL = 1,
+	BOOK = 2,
+	JOURNAL = 3,
+	PROCEEDINGS = 4,
+	ARTICLE = 5,
+	INVALID = 6
+} command;
+
+//returns list with arguments
+//trims a string accordingly to character split
+//remember to free value returned
+char** getargs(char **str, char split, int *size) {
+	//char ***ret = malloc(sizeof(char**));
+	*size = 0;
+	char *svptr, *s;
+	int i = 0;
+
+	//Generates size
+	int sz = 1;
+	sz = 1;
+	s = strchr(*str, split);
+	while (s != NULL) {
+		sz++;
+		s = strchr(s+1, split);
+	}
+	*size = sz;
+	char **ret = (char**)malloc(*size * sizeof(char*) );
+
+    //assigns values
+	s = strtok_r(*str, &split, &svptr);
+	while (s != NULL) {
+		//printf("\t\t%s\n", s);
+		ret[i] = (char*) malloc( (strlen(s) + 1) * sizeof(char) );
+		strcpy(ret[i], s);
+		s = strtok_r(NULL, &split, &svptr);
+		i++;
+	}
+
+	return ret;
+}
+
+void freeargs(char **args, int size) {
+	int i;
+	for (i = 0; i < size; i++) {
+		free(args[i]);
+		args[i] = NULL;
+	}
+	free(args);
+	args = NULL;
+}
+
+void printmodifications(command cmd, char *id) {
+	EXEC SQL BEGIN DECLARE SECTION;
+      char wpubid[11], appearsin[11];
+      char aname[23];
+      char title[71], publisher[51];
+      int aaid;
+      int aorder;
+      int year, volume, number, strpg, endpg;
+   	EXEC SQL END DECLARE SECTION;
+
+	printf("\tOperation was a success. Data modified:\n");
+	strcpy(wpubid, id);
+	printf("Pubid:\t\t%s\n", wpubid);
+	printf("Type:\t\t");
+	switch (cmd) {
+		case 2: //BOOK
+			printf("book\n"); break;
+		case 3: //JOURNAL
+			printf("journal\n"); break;
+		case 4: //PROCEEDINGS
+			printf("proceedings\n"); break;
+		case 5: //ARTICLE
+			printf("article\n"); break;
+	}
+	//PRINT TITLE
+	EXEC SQL SELECT title INTO :title FROM publication WHERE pubid = :wpubid;
+	printf("Title:\t\t%s\n", title);
+	
+	//EXTRA INFO
+	switch (cmd) {
+		case 3: //JOURNAL
+			EXEC SQL SELECT volume, number, year INTO :volume, :number, :year FROM journal WHERE pubid = :wpubid;
+			printf("Volume:\t\t%d\n", volume);
+			printf("Number:\t\t%d\n", number);
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		case 4: //PROCEEDINGS
+			EXEC SQL SELECT year INTO :year FROM proceedings WHERE pubid = :wpubid;
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		default: //BOOK or ARTICLE
+			printf("Authors:\t");
+			//DOES QUERY TO OBTAIN ALL AUTHORS
+			EXEC SQL DECLARE C1 CURSOR FOR
+				SELECT name FROM author a INNER JOIN wrote w ON (a.aid = w.aid) WHERE pubid = :wpubid ORDER BY aorder;
+			EXEC SQL OPEN C1;
+			for ( ; ; ) {
+				EXEC SQL FETCH C1 INTO :aname;
+				if (SQLCODE == 100) {break;}
+				printf("%s, ", aname);
+			}
+			printf("\n");
+			EXEC SQL CLOSE C1;
+
+			if (cmd == BOOK) { //BOOK
+				EXEC SQL SELECT publisher, year INTO :publisher, :year FROM book WHERE pubid = :wpubid;
+				printf("Publisher:\t%s\n", publisher);
+				printf("Year:\t\t%d\n\n", year);
+			}
+			else { //cmd == ARTICLE
+				EXEC SQL SELECT appearsin, startpage, endpage INTO :appearsin, :strpg, :endpg FROM
+					article WHERE pubid = :wpubid;
+				printf("In:\t\t%s\n", appearsin);
+				printf("Pages:\t\t%d--%d\n\n", strpg, endpg);
+			}
+		break;
+	}
+
+}
+
+void modifydb(command cmd, char **args, int sz_arg, char **args_aid, int sz_arg_aid, int ins_or_upd) {
+   EXEC SQL BEGIN DECLARE SECTION;
+	int  temp=2112;
+
+	char pubid[11], appearsin[11];
+	char name[23], url[43];
+	char title[71], publisher[51];
+	int aid, aorder;
+	int year, volume, number, strpg, endpg;
+   EXEC SQL END DECLARE SECTION;
+
+//printf("****INS_OR_UPD: %d\n", ins_or_upd);
+
+	switch (cmd) {
+		case(AUTHOR): {
+			aid = atoi(args[0]);
+			strcpy(name, args[1]);
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO author VALUES (:aid, :name, NULL);
+			}
+			else { //UPDATE
+				EXEC SQL UPDATE author SET name = :name WHERE aid =: aid;
+			}
+			break;
+		}
+		case (AUTHORURL): {
+			//UPDATE ONLY
+			aid = atoi(args[0]);
+			strcpy(url, args[1]);
+
+			EXEC SQL UPDATE author SET url = :url WHERE aid = :aid;
+			break;
+		}
+		case (BOOK): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			strcpy(publisher, args[3]);
+			year = atoi(args[4]);
+
+			if (ins_or_upd == INS) { //INSERT
+				//printf("INSERT BOOK\n");
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				for (aorder = 1; aorder <= sz_arg_aid; aorder++) {
+					aid = atoi(args_aid[aorder - 1]);
+					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+				}
+				EXEC SQL INSERT INTO book VALUES (:pubid, :publisher, :year);
+			}
+			else { //UPDATE
+				//printf("UPDATE BOOK\n");
+      				EXEC SQL DELETE FROM wrote WHERE pubid = :pubid;
+      				int i;
+      				for (i = 0; i < sz_arg_aid; i++) {
+        	    			aid = atoi(args_aid[i]);
+	            			aorder = i+1;
+            				EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+   				}
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE book SET publisher = :publisher, year = :year WHERE pubid = :pubid;
+			}
+			break;
+		}
+		case (JOURNAL): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			volume = atoi(args[2]);
+			number = atoi(args[3]);
+			year = atoi(args[4]);
+			
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				EXEC SQL INSERT INTO journal VALUES (:pubid, :volume,
+					:number, :year);
+			}
+			else { //UPDATE
+				EXEC SQL UPDATE publication SET title=:title WHERE pubid=:pubid;
+				EXEC SQL UPDATE journal SET volume=:volume, number=:number, year = :year WHERE pubid = :pubid;
+				//printf("UPDATE JOURNAL\n");
+			}
+			break;
+		}
+		case (PROCEEDINGS): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			year = atoi(args[2]);
+
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				EXEC SQL INSERT INTO proceedings VALUES (:pubid, :year);
+			}
+			else { //UPDATE
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE proceedings SET year = :year WHERE pubid = :pubid;
+				//printf("UPDATE PROCEEDINGS\n");
+			}
+			break;
+		}
+		case (ARTICLE): {
+			strcpy(pubid, args[0]);
+			strcpy(title, args[1]);
+			strcpy(appearsin, args[3]);
+			strpg = atoi(args[4]);
+			endpg = atoi(args[5]);
+
+			if (ins_or_upd == INS) { //INSERT
+				EXEC SQL INSERT INTO publication VALUES (:pubid, :title);
+				for (aorder = 1; aorder <= sz_arg_aid; aorder++) {
+					aid = atoi(args_aid[aorder - 1]);
+					EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+				}
+				EXEC SQL INSERT INTO article VALUES (:pubid, :appearsin, :strpg, :endpg);
+			}
+			else { //UPDATE
+				//printf("UPDATE ARTICLE\n");
+     				EXEC SQL DELETE FROM wrote WHERE pubid = :pubid;
+      				int i;
+      				for (i = 0; i < sz_arg_aid; i++) {
+        	    			aid = atoi(args_aid[i]);
+	            			aorder = i+1;
+            				EXEC SQL INSERT INTO wrote VALUES (:aid, :pubid, :aorder);
+   				}
+				EXEC SQL UPDATE publication SET title = :title WHERE pubid = :pubid;
+				EXEC SQL UPDATE article SET appearsin = :appearsin, startpage = :strpg,
+					endpage =: endpg WHERE pubid = :pubid;
+			}
+			break;
+		}
+		case(INVALID): {
+			break;
+		}
+	}
+}
+
+int main (int argc, char *argv[]) {
+	int i, j;
+/*	for (i = 1; i < argc; i++) {
+		printf("argv[%d]: %s\tsize: %d\n", i, argv[i], (int)strlen(argv[i]));
+	}
+*/
+
+	char *s, *s2, *tk;
+	char *svptr, *svptr2;
+	int first, size = 0, size_aid = 0;
+	EXEC SQL BEGIN DECLARE SECTION;
+		char db[6] = "cs348";
+		char **args = NULL, **args_aid = NULL;
+		char pubid[11];
+		int ins_or_upd, aid;
+	EXEC SQL END DECLARE SECTION;
+	command cmd;
+
+	EXEC SQL WHENEVER SQLERROR  GO TO error;
+	EXEC SQL CONNECT TO :db;
+
+   for (j = 1; j <= argc; j++) {
+	ins_or_upd = INS;
+
+	s = strtok_r(argv[j], TK2, &svptr);
+
+	while (s != NULL) {		
+		first = 1;
+		s2 = s;
+		tk = strtok_r(s2, TK1, &svptr2);
+		while (tk != NULL) {
+			if (first) {
+				//printf("cmd: %s\n", tk);
+				if ( !strcmp(tk, "author") ) cmd = AUTHOR;
+				else if ( !strcmp(tk, "authorurl") ) cmd = AUTHORURL;
+				else if ( !strcmp(tk, "book") ) cmd = BOOK;
+				else if ( !strcmp(tk, "journal") ) cmd = JOURNAL;
+				else if ( !strcmp(tk, "proceedings") ) cmd = PROCEEDINGS;
+				else if ( !strcmp(tk, "article") ) cmd = ARTICLE;
+				else cmd = INVALID;
+			}
+			else {
+				//printf("\targs: %s\n", tk);
+				//split
+				args = getargs(&tk, '#', &size);
+				/*for (i = 0; i < size; i++) {
+					printf("\t%d: %s\n", i, args[i]);
+				}*/
+				if (cmd == BOOK || cmd == ARTICLE) {
+					args_aid = getargs(&args[2], ';', &size_aid);
+					/*for (i = 0; i < size_aid; i++) {
+						printf("\t\t%d: %s\n", i, args_aid[i]);
+					}*/
+				}
+
+				//DISCOVER IF INSERT OR UPDATE
+				if (cmd == INVALID) {}
+				else if (cmd == AUTHOR) {
+					aid = atoi(args[0]);
+					EXEC SQL SELECT 1 INTO :ins_or_upd FROM author WHERE aid = :aid;
+					//case UPD value is different of 1
+					if (ins_or_upd == 1) ins_or_upd = UPD;
+				}
+				else if (cmd == AUTHORURL) {
+					ins_or_upd = UPD; //then update only
+				}
+				else {
+					//pubid = args[0];
+					strcpy(pubid, args[0]);
+					EXEC SQL SELECT 1 INTO :ins_or_upd FROM publication WHERE pubid = :pubid;
+					//case UPD value is different of 1
+					if (ins_or_upd == 1) ins_or_upd = UPD;
+				}
+
+				modifydb(cmd, args, size, args_aid, size_aid, ins_or_upd);
+
+				EXEC SQL COMMIT;
+				if (cmd != AUTHOR && cmd != AUTHORURL)
+					printmodifications(cmd, args[0]);
+
+				//Free arrays
+				if (cmd == BOOK || cmd == ARTICLE)
+					freeargs(args_aid, size_aid);
+				freeargs(args, size);
+			}
+			tk = strtok_r(NULL, TK1, &svptr2);
+			first = 0;
+		}
+		s = strtok_r(NULL, TK2, &svptr);
+	}
+	//return 0;
+   }
+
+	EXEC SQL CONNECT reset;
+	exit(0);
+
+error:
+   check_error("My error",&sqlca);
+   EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+   EXEC SQL ROLLBACK;
+   EXEC SQL CONNECT reset;
+   exit(1);
+}

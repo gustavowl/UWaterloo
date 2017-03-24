@@ -1,0 +1,150 @@
+#include <stdio.h>
+#include "util.h"
+#include <string.h>
+
+EXEC SQL INCLUDE SQLCA; 
+
+//argc should be 2.
+//input example: ./bibauthor "Eugene Zima Kenobi"
+int main(int argc, char *argv[]) {
+   char * getpass();
+
+   EXEC SQL BEGIN DECLARE SECTION;
+      char db[6] = "cs348";
+      char wpubid[11], appearsin[11];
+      char aname[23], input[23];
+      char title[71], publisher[51];
+      int aaid;
+      int aorder;
+      int type;
+      int year, volume, number, strpg, endpg;
+      //char s[200] = "SELECT pubid FROM wrote INNER JOIN author ON wrote.aid = author.aid WHERE author.name = \'Eugene Zima Kenobi\'";
+      char s[300] = "CREATE VIEW pbs AS SELECT pubid, name FROM wrote INNER JOIN author ON wrote.aid = author.aid WHERE	pubid IN ( SELECT pubid FROM wrote INNER JOIN author ON wrote.aid = author.aid WHERE author.name = \'?\') AND AORDER = 1";
+   EXEC SQL END DECLARE SECTION;
+
+   strcpy(input, argv[1]);
+
+   printf("Sample C program: CONNECT\n" );
+
+   EXEC SQL WHENEVER SQLERROR  GO TO error;
+
+   EXEC SQL CONNECT TO :db;
+   
+   EXEC SQL DROP VIEW pbs;
+
+   printf("destroyed view\nREMEMBER TO CREATE VIEW IN DATABASE GENERATION\n%s\n", input);
+
+   //STRING MANIPULATION TO ALTER COMMAND S
+   char *t = strchr(s, '?');
+   int index = (int)(t - s);
+   s[index] = '\0';
+   strcat(s, strcat(input, t+1));
+   //printf("COMMAND:\n\t%s", s);
+   //EXECUTE COMMAND S
+   EXEC SQL PREPARE S1 FROM :s;
+   EXEC SQL EXECUTE S1;
+   EXEC SQL COMMIT;
+
+   printf("created view\n");
+
+   //EXEC SQL DECLARE C1 CURSOR FOR SELECT * FROM pbs;
+   EXEC SQL DECLARE C1 CURSOR FOR
+	SELECT proceedings.pubid, '' AS NAME, year, 1 AS TYPE FROM pbs INNER JOIN article ON
+	(pbs.pubid = article.pubid) INNER JOIN proceedings ON article.appearsin = proceedings.pubid
+	UNION
+	SELECT journal.pubid, '' AS NAME, year, 2 AS TYPE FROM pbs INNER JOIN article ON
+	(pbs.pubid = article.pubid) INNER JOIN journal ON article.appearsin = journal.pubid
+	UNION
+	SELECT pbs.*, year, 3 AS TYPE FROM pbs INNER JOIN book ON (pbs.pubid = book.pubid)
+	UNION
+	SELECT pbs.*, year, 4 AS TYPE FROM pbs INNER JOIN article ON (pbs.pubid = article.pubid)
+	INNER JOIN proceedings ON article.appearsin = proceedings.pubid
+	UNION
+	SELECT pbs.*, year, 4 AS TYPE FROM pbs INNER JOIN article ON (pbs.pubid = article.pubid)
+	INNER JOIN journal ON article.appearsin = journal.pubid
+	ORDER BY year DESC, name ASC;
+   EXEC SQL OPEN C1;
+
+   printf("Connected to DB2: a test SELECT for %s\n", db);
+
+   for ( ; ; ) {
+	EXEC SQL FETCH C1 INTO :wpubid, :aname, :year, :type;
+	if (SQLCODE == 100) {break;}
+	//printf("\tPUBID: %s\tNAME: %s\tYEAR: %d\tTYPE: %d\n", wpubid, aname, year, type);
+	
+	printf("Pubid:\t\t%s\n", wpubid);
+	printf("Type:\t\t");
+	switch (type) {
+		case 1: //PROCEEDINGS
+			printf("proceedings\n"); break;
+		case 2: //JOURNAL
+			printf("journal\n"); break;
+		case 3: //BOOK
+			printf("book\n"); break;
+		case 4: //ARTICLE
+			printf("article\n"); break;
+	}
+	//PRINT TITLE
+	EXEC SQL SELECT title INTO :title FROM publication WHERE pubid = :wpubid;
+	printf("Title:\t\t%s\n", title);
+	
+	//EXTRA INFO
+	switch (type) {
+		case 1: //PROCEEDINGS
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		case 2: //JOURNAL
+			EXEC SQL SELECT volume, number INTO :volume, :number FROM journal WHERE pubid = :wpubid;
+			printf("Volume:\t\t%d\n", volume);
+			printf("Number:\t\t%d\n", number);
+			printf("Year:\t\t%d\n\n", year);
+		break;
+		default: //BOOK or ARTICLE
+			printf("Authors:\t");
+			//DOES QUERY TO OBTAIN ALL AUTHORS
+			EXEC SQL DECLARE C2 CURSOR FOR
+				SELECT name FROM author a INNER JOIN wrote w ON (a.aid = w.aid) WHERE pubid = :wpubid ORDER BY aorder;
+			EXEC SQL OPEN C2;
+			for ( ; ; ) {
+				EXEC SQL FETCH C2 INTO :aname;
+				if (SQLCODE == 100) {break;}
+				printf("%s, ", aname);
+			}
+			printf("\n");
+			EXEC SQL CLOSE C2;
+
+			if (type == 3) { //BOOK
+				EXEC SQL SELECT publisher INTO :publisher FROM book WHERE pubid = :wpubid;
+				printf("Publisher:\t%s\n", publisher);
+				printf("Year:\t\t%d\n\n", year);
+			}
+			else { //type == 4: ARTICLE
+				EXEC SQL SELECT appearsin, startpage, endpage INTO :appearsin, :strpg, :endpg FROM
+					article WHERE pubid = :wpubid;
+				printf("In:\t\t%s\n", appearsin);
+				printf("Pages:\t\t%d--%d\n\n", strpg, endpg);
+			}
+		break;
+	}
+   } 
+   
+   EXEC SQL CLOSE C1;
+   EXEC SQL COMMIT;
+   EXEC SQL CONNECT reset;
+
+   exit(0);
+
+error:
+   check_error("My error",&sqlca);
+   EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+   EXEC SQL ROLLBACK;
+   EXEC SQL CONNECT reset;
+   exit(1);
+}
+
+/*
+
+SELECT aid FROM author WHERE name = input
+
+*/
